@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecionamento - Contador</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: white;
+        }
+    </style>
+</head>
+<body>
+    <!-- Página invisível - redireciona automaticamente -->
+    <div style="display: none;" id="debug">
+        Registrando clique...
+    </div>
+
+    <script>
+        // ⚠️ CONFIGURAÇÕES - SUBSTITUA PELOS SEUS DADOS ⚠️
+        const CONFIG = {
+            // Cole sua API Key do JSONBin aqui:
+            API_KEY: '$2a$10$f7XvB6OBfqgX4W29YTo1Yu7GTSNc1JcpMrU7znVJwOBPXrUuAleji', 
+            
+            // Cole o ID do seu Bin aqui:
+            BIN_ID: '6894ea36203a8b52b5e1046b', 
+            
+            // Site para onde redirecionar após registrar o clique:
+            REDIRECT_URL: 'https://www.google.com', 
+            
+            REDIRECT_DELAY: 0 // Redireciona imediatamente
+        };
+
+        async function obterDadosClique() {
+            // Tenta obter localização aproximada via IP
+            let localizacao = 'Desconhecida';
+            try {
+                const ipResponse = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipResponse.json();
+                
+                // Usando serviço gratuito para localização por IP
+                const geoResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`);
+                const geoData = await geoResponse.json();
+                localizacao = `${geoData.city || 'N/A'}, ${geoData.country_name || 'N/A'}`;
+            } catch (error) {
+                console.log('Erro ao obter localização:', error);
+            }
+
+            // Detecta tipo de dispositivo
+            const userAgent = navigator.userAgent;
+            let dispositivo = 'Desktop';
+            
+            if (/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent)) {
+                dispositivo = 'Mobile';
+            } else if (/Tablet|iPad/i.test(userAgent)) {
+                dispositivo = 'Tablet';
+            }
+
+            return {
+                timestamp: new Date().toISOString(),
+                data: new Date().toLocaleDateString('pt-BR'),
+                hora: new Date().toLocaleTimeString('pt-BR'),
+                localizacao: localizacao,
+                dispositivo: dispositivo,
+                navegador: getBrowser(userAgent),
+                referrer: document.referrer || 'Direto',
+                urlOrigem: window.location.href
+            };
+        }
+
+        function getBrowser(userAgent) {
+            if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) return 'Chrome';
+            if (userAgent.includes('Firefox')) return 'Firefox';
+            if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'Safari';
+            if (userAgent.includes('Edg')) return 'Edge';
+            return 'Outro';
+        }
+
+        async function salvarClique(dadosClique) {
+            try {
+                // Primeiro, busca os dados existentes
+                const getResponse = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.BIN_ID}/latest`, {
+                    headers: {
+                        'X-Master-Key': CONFIG.API_KEY
+                    }
+                });
+
+                let cliquesExistentes = [];
+                if (getResponse.ok) {
+                    const data = await getResponse.json();
+                    cliquesExistentes = data.record.cliques || [];
+                }
+
+                // Adiciona o novo clique
+                cliquesExistentes.push(dadosClique);
+
+                // Salva de volta (sem await para não atrasar o redirecionamento)
+                fetch(`https://api.jsonbin.io/v3/b/${CONFIG.BIN_ID}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': CONFIG.API_KEY
+                    },
+                    body: JSON.stringify({
+                        cliques: cliquesExistentes
+                    })
+                }).catch(error => {
+                    console.log('Erro ao salvar (mas continuando...):', error);
+                });
+
+                return true;
+
+            } catch (error) {
+                console.log('Erro ao salvar clique:', error);
+                return false;
+            }
+        }
+
+        async function iniciar() {
+            try {
+                // Coleta dados do clique
+                const dadosClique = await obterDadosClique();
+                console.log('Clique registrado:', dadosClique);
+                
+                // Inicia o salvamento em background (sem esperar)
+                salvarClique(dadosClique);
+                
+                // Redireciona imediatamente
+                window.location.href = CONFIG.REDIRECT_URL;
+
+            } catch (error) {
+                console.log('Erro, mas redirecionando mesmo assim:', error);
+                // Mesmo com erro, redireciona
+                window.location.href = CONFIG.REDIRECT_URL;
+            }
+        }
+
+        // Inicia quando a página carrega
+        window.onload = iniciar;
+    </script>
+</body>
+</html>
