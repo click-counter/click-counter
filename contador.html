@@ -674,6 +674,47 @@
         let dadosCliques = [];
         let ultimoTotalCliques = 0;
 
+        // ===== SISTEMA DE PREFERÊNCIA DE TEMA =====
+        const TEMA_STORAGE_KEY = 'contador-cliques-tema';
+
+        function carregarTemaPreferido() {
+            try {
+                const temaSalvo = localStorage.getItem(TEMA_STORAGE_KEY);
+                const toggle = document.getElementById('darkmode-toggle');
+                
+                if (temaSalvo === 'escuro') {
+                    toggle.checked = true;
+                } else if (temaSalvo === 'claro') {
+                    toggle.checked = false;
+                } else {
+                    // Se não há preferência salva, detecta preferência do sistema
+                    const prefereEscuro = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    toggle.checked = prefereEscuro;
+                }
+            } catch (error) {
+                console.warn('Erro ao carregar tema:', error);
+                // Fallback para tema claro se há erro
+                document.getElementById('darkmode-toggle').checked = false;
+            }
+        }
+
+        function salvarTemaPreferido(temaEscuro) {
+            try {
+                const tema = temaEscuro ? 'escuro' : 'claro';
+                localStorage.setItem(TEMA_STORAGE_KEY, tema);
+            } catch (error) {
+                console.warn('Erro ao salvar tema:', error);
+            }
+        }
+
+        function configurarToggleTema() {
+            const toggle = document.getElementById('darkmode-toggle');
+            
+            toggle.addEventListener('change', function() {
+                salvarTemaPreferido(this.checked);
+            });
+        }
+
         // Função para obter data/hora em UTC-3
         function getUTC3DateTime() {
             const now = new Date();
@@ -937,11 +978,23 @@
             }
         }
 
-        // Carrega os dados quando a página abre
-        window.onload = carregarDados;
+        // ===== INICIALIZAÇÃO =====
+        function inicializar() {
+            // Carrega o tema antes de tudo
+            carregarTemaPreferido();
+            
+            // Configura o evento do toggle
+            configurarToggleTema();
+            
+            // Carrega os dados
+            carregarDados();
+            
+            // Auto-refresh a cada 10 segundos para detectar novos cliques rapidamente
+            setInterval(carregarDados, 10000);
+        }
 
-        // Auto-refresh a cada 10 segundos para detectar novos cliques rapidamente
-        setInterval(carregarDados, 10000);
+        // Inicializa quando a página carrega
+        window.addEventListener('DOMContentLoaded', inicializar);
     </script>
 </body>
 </html>
