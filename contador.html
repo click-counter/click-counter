@@ -785,17 +785,12 @@
         // ===== SISTEMA DE PREFERÊNCIA DE TEMA =====
         const TEMA_STORAGE_KEY = 'contador-cliques-tema';
 
-        // Função para converter qualquer timestamp para UTC-3 (Brasília)
-        function converterParaUTC3(timestamp) {
+        // Função CORRIGIDA para interpretar timestamps de Brasília
+        function formatarTimestampBrasilia(timestamp) {
+            // Cria uma data a partir do timestamp
             const date = new Date(timestamp);
-            // Aplica o offset UTC-3 (180 minutos)
-            const utc3Time = new Date(date.getTime() - (3 * 60 * 60 * 1000));
-            return utc3Time;
-        }
-
-        // Função para formatar data/hora em UTC-3
-        function formatarDataHoraUTC3(timestamp) {
-            const date = converterParaUTC3(timestamp);
+            
+            // Formata usando o fuso horário de Brasília
             return date.toLocaleString('pt-BR', {
                 timeZone: 'America/Sao_Paulo',
                 day: '2-digit',
@@ -804,6 +799,17 @@
                 hour: '2-digit',
                 minute: '2-digit',
                 second: '2-digit'
+            });
+        }
+
+        // Função para obter data atual no fuso de Brasília (para comparações)
+        function getDataHojeBrasilia() {
+            const agora = new Date();
+            return agora.toLocaleDateString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
             });
         }
 
@@ -845,43 +851,6 @@
             });
         }
 
-        // Função para obter data/hora em UTC-3 (Brasília)
-        function getUTC3DateTime(timestamp) {
-            const date = timestamp ? new Date(timestamp) : new Date();
-            // Ajusta para UTC-3 (Brasília) considerando o offset correto
-            const offset = -3 * 60; // UTC-3 em minutos
-            const utc3Time = new Date(date.getTime() + offset * 60 * 1000);
-
-            return {
-                iso: utc3Time.toISOString(),
-                data: utc3Time.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-                hora: utc3Time.toLocaleTimeString('pt-BR', {
-                    timeZone: 'America/Sao_Paulo',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                })
-            };
-        }
-
-        // Função específica para formatar o timestamp salvo
-        function formatarTimestamp(timestamp) {
-            const date = new Date(timestamp);
-            // Aplica o offset UTC-3
-            const offset = -3 * 60; // UTC-3 em minutos
-            const utc3Time = new Date(date.getTime() + offset * 60 * 1000);
-
-            return utc3Time.toLocaleString('pt-BR', {
-                timeZone: 'America/Sao_Paulo',
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-        }
-
         async function carregarDados() {
             const loading = document.getElementById('loading');
             const error = document.getElementById('error');
@@ -912,19 +881,31 @@
                 const data = await response.json();
                 const novosCliques = data.record.cliques || [];
 
-                // Processa os cliques para ajustar o fuso horário
-                const cliquesAjustados = novosCliques.map(clique => {
-                    const dataHoraUTC3 = formatarDataHoraUTC3(clique.timestamp).split(', ');
+                // Processa os cliques com o horário correto de Brasília
+                const cliquesProcessados = novosCliques.map(clique => {
+                    let dataHoraFormatada;
+                    
+                    // Verifica se tem timestamp (novo formato) ou usa data/hora separadas (formato antigo)
+                    if (clique.timestamp) {
+                        dataHoraFormatada = formatarTimestampBrasilia(clique.timestamp);
+                    } else {
+                        // Formato antigo - usa data e hora separadas
+                        dataHoraFormatada = `${clique.data}, ${clique.hora}`;
+                    }
+                    
+                    const [dataParte, horaParte] = dataHoraFormatada.split(', ');
+                    
                     return {
                         ...clique,
-                        data: dataHoraUTC3[0],
-                        hora: dataHoraUTC3[1]
+                        data: dataParte,
+                        hora: horaParte,
+                        timestampOriginal: clique.timestamp || null
                     };
                 });
 
                 // Verifica se há novos cliques
-                const temNovosCliques = cliquesAjustados.length > ultimoTotalCliques;
-                dadosCliques = cliquesAjustados;
+                const temNovosCliques = cliquesProcessados.length > ultimoTotalCliques;
+                dadosCliques = cliquesProcessados;
                 ultimoTotalCliques = dadosCliques.length;
 
                 exibirEstatisticas();
@@ -952,7 +933,7 @@
         }
 
         function exibirEstatisticas() {
-            const hoje = formatarDataHoraUTC3(new Date().toISOString()).split(', ')[0];
+            const hoje = getDataHojeBrasilia();
             const cliquesHoje = dadosCliques.filter(clique => clique.data === hoje);
 
             const dispositivosMobile = dadosCliques.filter(clique =>
@@ -977,16 +958,20 @@
                 return;
             }
 
-            // Ordena por data/hora (mais recente primeiro)
-            const cliquesOrdenados = [...dadosCliques].sort((a, b) =>
-                new Date(b.timestamp) - new Date(a.timestamp)
-            );
+            // Ordena por timestamp ou data/hora (mais recente primeiro)
+            const cliquesOrdenados = [...dadosCliques].sort((a, b) => {
+                if (a.timestampOriginal && b.timestampOriginal) {
+                    return new Date(b.timestampOriginal) - new Date(a.timestampOriginal);
+                } else {
+                    // Fallback para ordenação por data/hora string
+                    const dateA = new Date(a.data.split('/').reverse().join('-') + ' ' + a.hora);
+                    const dateB = new Date(b.data.split('/').reverse().join('-') + ' ' + b.hora);
+                    return dateB - dateA;
+                }
+            });
 
             cliquesOrdenados.forEach((clique, index) => {
                 const tr = document.createElement('tr');
-
-                // Formata a data/hora para exibição
-                const dataHoraFormatada = formatarDataHoraUTC3(clique.timestamp);
 
                 // Aplica animação no primeiro item (mais recente) se há novos cliques
                 if (index === 0 && temNovosCliques) {
@@ -1005,7 +990,7 @@
                     ${clique.sistemaOperacional || 'N/A'} - ${clique.navegador} - ${clique.dispositivo}
                 </span>
             </td>
-            <td>${dataHoraFormatada}</td>
+            <td>${clique.data}, ${clique.hora}</td>
         `;
 
                 tbody.appendChild(tr);
@@ -1021,10 +1006,17 @@
                 return;
             }
 
-            // Ordena por data/hora (mais recente primeiro)
-            const cliquesOrdenados = [...dadosCliques].sort((a, b) =>
-                new Date(b.timestamp) - new Date(a.timestamp)
-            );
+            // Ordena por timestamp ou data/hora (mais recente primeiro)
+            const cliquesOrdenados = [...dadosCliques].sort((a, b) => {
+                if (a.timestampOriginal && b.timestampOriginal) {
+                    return new Date(b.timestampOriginal) - new Date(a.timestampOriginal);
+                } else {
+                    // Fallback para ordenação por data/hora string
+                    const dateA = new Date(a.data.split('/').reverse().join('-') + ' ' + a.hora);
+                    const dateB = new Date(b.data.split('/').reverse().join('-') + ' ' + b.hora);
+                    return dateB - dateA;
+                }
+            });
 
             cliquesOrdenados.forEach((clique, index) => {
                 const card = document.createElement('div');
