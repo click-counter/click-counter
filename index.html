@@ -55,6 +55,17 @@
             DEBUG_MODE: false
         };
 
+        // Função para obter data/hora em UTC-3
+        function getUTC3DateTime() {
+            const now = new Date();
+            const utc3Time = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+            return {
+                iso: utc3Time.toISOString(),
+                data: utc3Time.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+                hora: utc3Time.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+            };
+        }
+
         function updateStatus(message) {
             document.getElementById('status').innerHTML = message;
             console.log(message);
@@ -98,6 +109,7 @@
             
             const ip = await obterIP();
             const localizacao = await obterLocalizacao(ip);
+            const dateTime = getUTC3DateTime();
 
             // Detecta tipo de dispositivo
             const userAgent = navigator.userAgent;
@@ -111,14 +123,13 @@
 
             const dados = {
                 ip: ip,
-                timestamp: new Date().toISOString(),
-                data: new Date().toLocaleDateString('pt-BR'),
-                hora: new Date().toLocaleTimeString('pt-BR'),
+                timestamp: dateTime.iso,
+                data: dateTime.data,
+                hora: dateTime.hora,
                 localizacao: localizacao,
                 dispositivo: dispositivo,
                 navegador: getBrowser(userAgent),
                 sistemaOperacional: getOS(userAgent),
-                referrer: document.referrer || 'Direto',
                 urlOrigem: window.location.href
             };
 
