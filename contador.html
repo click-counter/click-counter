@@ -371,21 +371,31 @@
                 padding: 10px;
             }
             
+            /* Estatísticas em 2 colunas no mobile */
             .stats {
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-                gap: 15px;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
             }
             
             .stat-card {
-                padding: 20px 15px;
+                padding: 15px 10px;
             }
             
             .stat-number {
-                font-size: 2em;
+                font-size: 1.8em;
             }
             
             .stat-label {
-                font-size: 1em;
+                font-size: 0.9em;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 5px;
+            }
+            
+            .stat-label .icon {
+                width: 16px;
+                height: 16px;
             }
             
             .controls {
@@ -412,6 +422,15 @@
             
             .mobile-cards {
                 display: block;
+                /* Background mais contrastante */
+                background: rgba(240, 240, 240, 0.8);
+                padding: 15px;
+                border-radius: 10px;
+                margin: -15px;
+            }
+            
+            body:has(#darkmode-toggle:checked) .mobile-cards {
+                background: rgba(40, 40, 40, 0.8);
             }
             
             .mobile-card {
@@ -498,10 +517,13 @@
                 padding: 40px 20px;
                 color: #666;
                 font-style: italic;
+                background: rgba(240, 240, 240, 0.8);
+                border-radius: 10px;
             }
             
             body:has(#darkmode-toggle:checked) .mobile-no-data {
                 color: #bbb;
+                background: rgba(40, 40, 40, 0.8);
             }
         }
         
@@ -512,7 +534,7 @@
             }
             
             table {
-                min-width: 700px;
+                min-width: 600px;
             }
             
             th, td {
@@ -621,12 +643,11 @@
                         <th>LOCALIZAÇÃO</th>
                         <th>OS / NAV / DISP</th>
                         <th>DATA - HORA</th>
-                        <th>REFERRER</th>
                     </tr>
                 </thead>
                 <tbody id="tabelaDados">
                     <tr class="no-data">
-                        <td colspan="5">Nenhum acesso registrado ainda...</td>
+                        <td colspan="4">Nenhum acesso registrado ainda...</td>
                     </tr>
                 </tbody>
             </table>
@@ -652,6 +673,17 @@
 
         let dadosCliques = [];
         let ultimoTotalCliques = 0;
+
+        // Função para obter data/hora em UTC-3
+        function getUTC3DateTime() {
+            const now = new Date();
+            const utc3Time = new Date(now.getTime() - (3 * 60 * 60 * 1000));
+            return {
+                iso: utc3Time.toISOString(),
+                data: utc3Time.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+                hora: utc3Time.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+            };
+        }
 
         async function carregarDados() {
             const loading = document.getElementById('loading');
@@ -714,7 +746,7 @@
         }
 
         function exibirEstatisticas() {
-            const hoje = new Date().toLocaleDateString('pt-BR');
+            const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
             const cliquesHoje = dadosCliques.filter(clique => clique.data === hoje);
             
             const dispositivosMobile = dadosCliques.filter(clique => 
@@ -735,7 +767,7 @@
             tbody.innerHTML = '';
 
             if (dadosCliques.length === 0) {
-                tbody.innerHTML = '<tr class="no-data"><td colspan="5">Nenhum acesso registrado ainda...</td></tr>';
+                tbody.innerHTML = '<tr class="no-data"><td colspan="4">Nenhum acesso registrado ainda...</td></tr>';
                 return;
             }
 
@@ -765,7 +797,6 @@
                         </span>
                     </td>
                     <td>${clique.data} - ${clique.hora}</td>
-                    <td title="${clique.referrer}">${clique.referrer}</td>
                 `;
                 
                 tbody.appendChild(tr);
@@ -820,10 +851,6 @@
                         <div class="mobile-card-label">Data:</div>
                         <div class="mobile-card-value">${clique.data} - ${clique.hora}</div>
                     </div>
-                    <div class="mobile-card-row">
-                        <div class="mobile-card-label">Origem:</div>
-                        <div class="mobile-card-value" title="${clique.referrer}">${clique.referrer}</div>
-                    </div>
                 `;
                 
                 mobileCards.appendChild(card);
@@ -857,7 +884,7 @@
                 return;
             }
 
-            const headers = ['IP', 'Data', 'Hora', 'Localização', 'Sistema Operacional', 'Dispositivo', 'Navegador', 'Referrer', 'URL Origem'];
+            const headers = ['IP', 'Data', 'Hora', 'Localização', 'Sistema Operacional', 'Dispositivo', 'Navegador', 'URL Origem'];
             const csvContent = [
                 headers.join(','),
                 ...dadosCliques.map(clique => [
@@ -868,7 +895,6 @@
                     clique.sistemaOperacional || 'N/A',
                     clique.dispositivo,
                     clique.navegador,
-                    `"${clique.referrer}"`,
                     `"${clique.urlOrigem}"`
                 ].join(','))
             ].join('\n');
