@@ -9,13 +9,31 @@
             margin: 0;
             padding: 0;
             background: white;
+            font-family: Arial, sans-serif;
+        }
+        #debug {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            max-width: 300px;
+            z-index: 9999;
+            display: none; /* Escondido por padrão */
+        }
+        .debug-visible {
+            display: block;
         }
     </style>
 </head>
 <body>
-    <!-- Página invisível - redireciona automaticamente -->
-    <div style="display: none;" id="debug">
-        Registrando clique...
+    <!-- Debug visível durante desenvolvimento -->
+    <div id="debug">
+        <strong>Debug - Contador de Cliques</strong><br>
+        <span id="status">Iniciando...</span>
     </div>
 
     <script>
@@ -30,23 +48,56 @@
             // Site para onde redirecionar após registrar o clique:
             REDIRECT_URL: 'https://www.google.com', 
             
-            REDIRECT_DELAY: 0 // Redireciona imediatamente
+            // Tempo em ms para aguardar antes de redirecionar (para debug)
+            REDIRECT_DELAY: 0, // Redireciona imediatamente
+            
+            // Modo debug (true = mostra mensagens, false = invisível)
+            DEBUG_MODE: false
         };
 
-        async function obterDadosClique() {
-            // Tenta obter localização aproximada via IP
-            let localizacao = 'Desconhecida';
-            try {
-                const ipResponse = await fetch('https://api.ipify.org?format=json');
-                const ipData = await ipResponse.json();
-                
-                // Usando serviço gratuito para localização por IP
-                const geoResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`);
-                const geoData = await geoResponse.json();
-                localizacao = `${geoData.city || 'N/A'}, ${geoData.country_name || 'N/A'}`;
-            } catch (error) {
-                console.log('Erro ao obter localização:', error);
+        function updateStatus(message) {
+            document.getElementById('status').innerHTML = message;
+            console.log(message);
+        }
+
+        function showDebug() {
+            if (CONFIG.DEBUG_MODE) {
+                document.getElementById('debug').classList.add('debug-visible');
             }
+        }
+
+        async function obterIP() {
+            try {
+                updateStatus('🌐 Obtendo IP...');
+                const response = await fetch('https://api.ipify.org?format=json');
+                const data = await response.json();
+                updateStatus(`📍 IP: ${data.ip}`);
+                return data.ip;
+            } catch (error) {
+                updateStatus(`❌ Erro no IP: ${error.message}`);
+                return 'Desconhecido';
+            }
+        }
+
+        async function obterLocalizacao(ip) {
+            try {
+                updateStatus('🗺️ Obtendo localização...');
+                const response = await fetch(`https://ipapi.co/${ip}/json/`);
+                const data = await response.json();
+                const loc = `${data.city || 'N/A'}, ${data.country_name || 'N/A'}`;
+                updateStatus(`🌍 Local: ${loc}`);
+                return loc;
+            } catch (error) {
+                updateStatus(`⚠️ Erro localização: ${error.message}`);
+                return 'Desconhecida';
+            }
+        }
+
+        async function obterDadosClique() {
+            updateStatus('📊 Coletando dados...');
+            
+            const ip = await obterIP();
+            const localizacao = await obterLocalizacao(ip);
 
             // Detecta tipo de dispositivo
             const userAgent = navigator.userAgent;
@@ -58,16 +109,21 @@
                 dispositivo = 'Tablet';
             }
 
-            return {
+            const dados = {
+                ip: ip,
                 timestamp: new Date().toISOString(),
                 data: new Date().toLocaleDateString('pt-BR'),
                 hora: new Date().toLocaleTimeString('pt-BR'),
                 localizacao: localizacao,
                 dispositivo: dispositivo,
                 navegador: getBrowser(userAgent),
+                sistemaOperacional: getOS(userAgent),
                 referrer: document.referrer || 'Direto',
                 urlOrigem: window.location.href
             };
+
+            updateStatus(`✅ Dados coletados!`);
+            return dados;
         }
 
         function getBrowser(userAgent) {
@@ -78,8 +134,19 @@
             return 'Outro';
         }
 
+        function getOS(userAgent) {
+            if (userAgent.includes('Windows')) return 'Windows';
+            if (userAgent.includes('Mac')) return 'macOS';
+            if (userAgent.includes('Linux')) return 'Linux';
+            if (userAgent.includes('Android')) return 'Android';
+            if (userAgent.includes('iPhone') || userAgent.includes('iPad')) return 'iOS';
+            return 'Outro';
+        }
+
         async function salvarClique(dadosClique) {
             try {
+                updateStatus('📥 Buscando dados existentes...');
+                
                 // Primeiro, busca os dados existentes
                 const getResponse = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.BIN_ID}/latest`, {
                     headers: {
@@ -91,13 +158,18 @@
                 if (getResponse.ok) {
                     const data = await getResponse.json();
                     cliquesExistentes = data.record.cliques || [];
+                    updateStatus(`📋 ${cliquesExistentes.length} cliques existentes`);
+                } else {
+                    throw new Error(`Erro GET: ${getResponse.status} ${getResponse.statusText}`);
                 }
 
                 // Adiciona o novo clique
                 cliquesExistentes.push(dadosClique);
+                updateStatus(`➕ Adicionando clique... Total: ${cliquesExistentes.length}`);
 
-                // Salva de volta (sem await para não atrasar o redirecionamento)
-                fetch(`https://api.jsonbin.io/v3/b/${CONFIG.BIN_ID}`, {
+                // Salva de volta
+                updateStatus('💾 Salvando...');
+                const putResponse = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.BIN_ID}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -106,39 +178,70 @@
                     body: JSON.stringify({
                         cliques: cliquesExistentes
                     })
-                }).catch(error => {
-                    console.log('Erro ao salvar (mas continuando...):', error);
                 });
 
-                return true;
+                if (putResponse.ok) {
+                    updateStatus('✅ Clique salvo com sucesso!');
+                    return true;
+                } else {
+                    throw new Error(`Erro PUT: ${putResponse.status} ${putResponse.statusText}`);
+                }
 
             } catch (error) {
-                console.log('Erro ao salvar clique:', error);
+                updateStatus(`❌ Erro ao salvar: ${error.message}`);
+                console.error('Erro completo:', error);
                 return false;
             }
         }
 
         async function iniciar() {
             try {
+                showDebug();
+                updateStatus('🚀 Iniciando contador...');
+                
+                // Validação básica
+                if (!CONFIG.API_KEY || !CONFIG.BIN_ID) {
+                    throw new Error('API_KEY ou BIN_ID não configurados!');
+                }
+
                 // Coleta dados do clique
                 const dadosClique = await obterDadosClique();
-                console.log('Clique registrado:', dadosClique);
+                console.log('Dados do clique:', dadosClique);
                 
-                // Inicia o salvamento em background (sem esperar)
-                salvarClique(dadosClique);
+                // Salva o clique
+                const sucesso = await salvarClique(dadosClique);
                 
-                // Redireciona imediatamente
-                window.location.href = CONFIG.REDIRECT_URL;
+                if (sucesso) {
+                    updateStatus(`🎉 Sucesso! Redirecionando em ${CONFIG.REDIRECT_DELAY/1000}s...`);
+                } else {
+                    updateStatus(`⚠️ Erro no salvamento. Redirecionando em ${CONFIG.REDIRECT_DELAY/1000}s...`);
+                }
+                
+                // Redireciona após o delay
+                setTimeout(() => {
+                    window.location.href = CONFIG.REDIRECT_URL;
+                }, CONFIG.REDIRECT_DELAY);
 
             } catch (error) {
-                console.log('Erro, mas redirecionando mesmo assim:', error);
-                // Mesmo com erro, redireciona
-                window.location.href = CONFIG.REDIRECT_URL;
+                updateStatus(`💥 Erro crítico: ${error.message}`);
+                console.error('Erro crítico:', error);
+                
+                // Mesmo com erro, redireciona após um tempo
+                setTimeout(() => {
+                    window.location.href = CONFIG.REDIRECT_URL;
+                }, CONFIG.REDIRECT_DELAY);
             }
         }
 
         // Inicia quando a página carrega
         window.onload = iniciar;
+
+        // Para debug: permite cancelar redirecionamento
+        if (CONFIG.DEBUG_MODE) {
+            window.cancelRedirect = function() {
+                updateStatus('🛑 Redirecionamento cancelado para debug');
+            };
+        }
     </script>
 </body>
 </html>
